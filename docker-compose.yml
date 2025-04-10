@@ -1,0 +1,77 @@
+version: "3.8"
+
+services:
+  # Application Streamlit
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    container_name: streamlit_app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./app:/app
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+
+  # Exportateur de métriques séparé
+  metrics_exporter:
+    build:
+      context: .
+      dockerfile: docker/exporter.Dockerfile
+    container_name: metrics_exporter
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+    depends_on:
+      - streamlit
+
+  # Prometheus pour la collecte de métriques
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+    depends_on:
+      - metrics_exporter
+
+  # Grafana pour la visualisation
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # Node Exporter pour les métriques système
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: node_exporter
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+
+networks:
+  monitoring_network:
+    driver: bridge
